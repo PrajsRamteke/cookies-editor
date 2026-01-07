@@ -283,4 +283,4 @@ import { PermissionHandler } from './interface/lib/permissionHandler.js';
         callback(info.os === 'ios');
       });
   }
-})();
+});

