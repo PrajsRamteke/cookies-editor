@@ -1,5 +1,4 @@
 /.idea/*
-manifest.json
 build/*
 dist/*
 node_modules
