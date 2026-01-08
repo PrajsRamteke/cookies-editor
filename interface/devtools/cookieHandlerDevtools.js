@@ -169,11 +169,31 @@ export class CookieHandlerDevtools extends GenericCookieHandler {
       this.browserDetector
         .getApi()
         .runtime.sendMessage({ type: type, params: params })
-        .then(callback, errorCallback);
+        .then(callback)
+        .catch((error) => {
+          // Check for the specific "Receiving end does not exist" error
+          console.warn('[DevTools] Message send failed:', error.message);
+          if (errorCallback) {
+            errorCallback(error);
+          }
+        });
     } else {
       this.browserDetector
         .getApi()
-        .runtime.sendMessage({ type: type, params: params }, callback);
+        .runtime.sendMessage({ type: type, params: params }, (response) => {
+          // Check for runtime.lastError to prevent unchecked error
+          const error = this.browserDetector.getApi().runtime.lastError;
+          if (error) {
+            console.warn('[DevTools] Message send failed:', error.message);
+            if (errorCallback) {
+              errorCallback(error);
+            }
+            return;
+          }
+          if (callback) {
+            callback(response);
+          }
+        });
     }
   }
 }

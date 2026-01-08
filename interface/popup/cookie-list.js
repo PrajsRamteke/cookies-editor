@@ -1482,4 +1482,4 @@ import { CookieHandlerPopup } from './cookieHandlerPopup.js';
       }
     });
   }
-});
+})();
