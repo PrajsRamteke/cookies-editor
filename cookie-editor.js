@@ -155,6 +155,19 @@ import { PermissionHandler } from './interface/lib/permissionHandler.js';
         });
         return true;
       }
+      case 'captureScreenshot': {
+        browserDetector
+          .getApi()
+          .tabs.captureVisibleTab(null, { format: 'png' })
+          .then(dataUrl => {
+            sendResponse({ success: true, dataUrl: dataUrl });
+          })
+          .catch(error => {
+            console.error('Failed to capture screenshot:', error);
+            sendResponse({ success: false, error: error.message });
+          });
+        return true;
+      }
     }
   }
 
