@@ -32,7 +32,8 @@
 		"tabs",
 		"storage",
 		"sidePanel",
-		"activeTab"
+		"activeTab",
+		"history"
 	],
 	"host_permissions": [
 		"<all_urls>"

