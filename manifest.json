@@ -33,7 +33,10 @@
 		"storage",
 		"sidePanel",
 		"activeTab",
-		"history"
+		"history",
+		"scripting",
+		"debugger",
+		"privacy"
 	],
 	"host_permissions": [
 		"<all_urls>"
